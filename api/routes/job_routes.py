@@ -76,11 +76,73 @@ def create_job(
     db.commit()
     db.refresh(db_job)
 
-    return {"success": True, "job": db_job.jobid}
+    return {
+        "success": True,
+        "message": "Job created successfully",
+        "job": db_job.jobid
+    }
 
 
 # =========================================================
-# RECENT JOBS (🔥 MUST BE BEFORE {job_id})
+# GET ALL JOBS
+# =========================================================
+
+@router.get("/jobs")
+def get_all_jobs(
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    location: Optional[str] = Query(None),
+    job_type: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    db: Session = Depends(get_db)
+):
+    offset = (page - 1) * limit
+
+    query = """
+        SELECT jobid, job_title, client_name, location,
+               employment_type, salary, experience,
+               skills, created_at, applicants_count
+        FROM job_postings
+        WHERE 1=1
+    """
+
+    params = {"limit": limit, "offset": offset}
+
+    if location:
+        query += " AND LOWER(location) LIKE :location"
+        params["location"] = f"%{location.lower()}%"
+
+    if job_type:
+        query += " AND LOWER(employment_type) LIKE :job_type"
+        params["job_type"] = f"%{job_type.lower()}%"
+
+    if search:
+        query += """ AND (
+            LOWER(job_title) LIKE :search 
+            OR LOWER(job_description) LIKE :search
+            OR LOWER(skills) LIKE :search
+        )"""
+        params["search"] = f"%{search.lower()}%"
+
+    count_query = query.replace(
+        "SELECT jobid, job_title, client_name, location, employment_type, salary, experience, skills, created_at, applicants_count",
+        "SELECT COUNT(*)"
+    )
+
+    total = db.execute(text(count_query), {k: v for k, v in params.items() if k not in ["limit", "offset"]}).fetchone()[0]
+
+    query += " ORDER BY created_at DESC LIMIT :limit OFFSET :offset"
+    rows = db.execute(text(query), params).fetchall()
+
+    return {
+        "success": True,
+        "total": total,
+        "jobs": [dict(row._mapping) for row in rows]
+    }
+
+
+# =========================================================
+# RECENT JOBS ✅ (MOVED UP)
 # =========================================================
 
 @router.get("/jobs/recent")
@@ -114,29 +176,40 @@ def get_recent_jobs(
 
 
 # =========================================================
-# GET ALL JOBS
+# SEARCH JOBS
 # =========================================================
 
-@router.get("/jobs")
-def get_all_jobs(
+@router.get("/jobs/search")
+def search_jobs(
+    q: str,
     db: Session = Depends(get_db)
 ):
-    jobs = db.query(Job).all()
-    return {"success": True, "jobs": jobs}
+    query = """
+        SELECT jobid, job_title, location, skills, created_at
+        FROM job_postings
+        WHERE LOWER(job_title) LIKE :q OR LOWER(skills) LIKE :q
+    """
+
+    rows = db.execute(text(query), {"q": f"%{q.lower()}%"}).fetchall()
+
+    return {"success": True, "jobs": [dict(r._mapping) for r in rows]}
 
 
 # =========================================================
-# GET JOB BY ID (🔥 MUST BE LAST)
+# GET JOB BY ID ❌ (MUST BE LAST)
 # =========================================================
 
 @router.get("/jobs/{job_id}")
 def get_job_by_id(job_id: str, db: Session = Depends(get_db)):
-    job = db.query(Job).filter(Job.jobid == job_id).first()
+    row = db.execute(
+        text("SELECT * FROM job_postings WHERE jobid = :job_id"),
+        {"job_id": job_id}
+    ).fetchone()
 
-    if not job:
+    if not row:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    return {"success": True, "job": job}
+    return {"success": True, "job": dict(row._mapping)}
 
 
 # =========================================================
@@ -144,19 +217,20 @@ def get_job_by_id(job_id: str, db: Session = Depends(get_db)):
 # =========================================================
 
 @router.put("/jobs/{job_id}")
-def update_job(
-    job_id: str,
-    job: JobUpdate,
-    db: Session = Depends(get_db)
-):
-    existing = db.query(Job).filter(Job.jobid == job_id).first()
+def update_job(job_id: str, job: JobUpdate, db: Session = Depends(get_db)):
+    fields = []
+    params = {"job_id": job_id}
 
-    if not existing:
-        raise HTTPException(status_code=404, detail="Job not found")
+    for k, v in job.dict(exclude_unset=True).items():
+        fields.append(f"{k} = :{k}")
+        params[k] = v
 
-    for field, value in job.dict(exclude_unset=True).items():
-        setattr(existing, field, value)
+    if not fields:
+        return {"success": True}
 
+    query = f"UPDATE job_postings SET {', '.join(fields)} WHERE jobid = :job_id"
+
+    db.execute(text(query), params)
     db.commit()
 
     return {"success": True}
@@ -168,12 +242,14 @@ def update_job(
 
 @router.delete("/jobs/{job_id}")
 def delete_job(job_id: str, db: Session = Depends(get_db)):
-    job = db.query(Job).filter(Job.jobid == job_id).first()
+    res = db.execute(
+        text("DELETE FROM job_postings WHERE jobid = :job_id RETURNING jobid"),
+        {"job_id": job_id}
+    )
 
-    if not job:
+    if not res.fetchone():
         raise HTTPException(status_code=404, detail="Job not found")
 
-    db.delete(job)
     db.commit()
 
     return {"success": True}
