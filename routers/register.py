@@ -51,7 +51,7 @@ def send_verification_email(email: str, token: str):
         print("❌ EMAIL CONFIG MISSING")
         return
 
-    verify_link = f"https://hiringcircle-api.up.railway.app/api/verify?token={token}"
+    verify_link = f"https://www.hiringcircle.us/verify?token={token}"
 
     subject = "Verify your email - HiringCircle"
 

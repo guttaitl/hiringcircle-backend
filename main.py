@@ -71,7 +71,7 @@ origins = [
     "https://hiringcircleusa.vercel.app",     # ✅ NO TRAILING SPACE
     "https://hiringcircle.us",                # ✅ NO TRAILING SPACE
     "https://www.hiringcircle.us",            # ✅ NO TRAILING SPACE
-    "https://hiringcircle-api.up.railway.app", # Railway domain itself
+    "https://hiringcircleusa-production.up.railway.app",
 ]
 
 app.add_middleware(
@@ -90,7 +90,6 @@ print(f"✅ CORS configured for: {origins}")
 # ROUTES
 # ==========================================================
 
-# Include all your routers here
 app.include_router(auth_router, prefix="/api", tags=["auth"])
 app.include_router(verify_router, prefix="/api", tags=["verify"])
 app.include_router(job_router, prefix="/api", tags=["jobs"])
@@ -132,17 +131,6 @@ def startup():
             print("✅ Database connected")
     except Exception as e:
         raise RuntimeError(f"Database connection failed: {e}")
-
-# ==========================================================
-# ROUTERS
-# ==========================================================
-
-app.include_router(auth_router, prefix="/api")
-app.include_router(job_router, prefix="/api")
-app.include_router(resume_router, prefix="/api")
-app.include_router(ai_match_router, prefix="/api")
-app.include_router(employer_router, prefix="/api")
-app.include_router(verify_router, prefix="/api")
 
 # ==========================================================
 # ROOT
