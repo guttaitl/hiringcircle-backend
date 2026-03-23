@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Job Notification</title>
+</head>
+
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial, sans-serif;">
+
+<table width="100%" cellspacing="0" cellpadding="0" border="0">
+<tr>
+<td align="center">
+
+<!-- MAIN EMAIL CONTAINER -->
+<table width="600" cellspacing="0" cellpadding="0" border="0"
+       style="background:#ffffff;margin:20px;border-radius:8px;overflow:hidden;">
+
+<!-- HEADER -->
+<tr>
+<td style="background:#111827;color:#ffffff;padding:18px 24px;font-size:20px;font-weight:bold;">
+  New Job Opportunity
+</td>
+</tr>
+
+<!-- BODY -->
+<tr>
+<td style="padding:24px;">
+
+<!-- JOB META -->
+<div style="margin-bottom:12px;font-size:16px;">
+<strong>Job Title:</strong> {{ job_title }}
+</div>
+
+<div style="margin-bottom:12px;font-size:14px;color:#374151;">
+<strong>Location:</strong> {{ location }}
+</div>
+
+<div style="margin-bottom:18px;font-size:14px;color:#374151;">
+<strong>Employment Type:</strong> {{ employment_type }}
+</div>
+
+<hr style="border:none;border-top:1px solid #e5e7eb;margin:18px 0;">
+
+<!-- JOB DESCRIPTION -->
+<div style="
+  font-size:19px;
+  font-weight:700;
+  margin-bottom:8px;
+  color:#111827;">
+  Job Description
+</div>
+
+<div style="font-size:14px;line-height:1.5;color:#1f2937;">
+  {{ job_description | safe }}
+</div>
+
+<hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0;">
+
+<!-- APPLY TEXT -->
+<div style="text-align:center;margin-bottom:10px;font-size:15px;color:#374151;">
+Interested in this opportunity?
+</div>
+
+<!-- APPLY BUTTON (OUTLOOK SAFE) -->
+<table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center">
+<tr>
+<td align="center">
+
+<!--[if mso]>
+<v:roundrect xmlns:v="urn:schemas-microsoft-com:vml"
+  href="{{ apply_url }}"
+  style="height:44px;v-text-anchor:middle;width:220px;"
+  arcsize="12%"
+  stroke="f"
+  fillcolor="#2563eb">
+  <w:anchorlock/>
+  <center style="
+    color:#ffffff;
+    font-family:Arial, sans-serif;
+    font-size:16px;
+    font-weight:bold;">
+    Apply Now
+  </center>
+</v:roundrect>
+<![endif]-->
+
+<!--[if !mso]><!-- -->
+<a href="{{ apply_url }}"
+  style="
+    background-color:#2563eb;
+    border-radius:6px;
+    color:#ffffff;
+    display:inline-block;
+    font-family:Arial, sans-serif;
+    font-size:16px;
+    font-weight:bold;
+    line-height:44px;
+    text-align:center;
+    text-decoration:none;
+    width:220px;">
+  Apply Now
+</a>
+<!--<![endif]-->
+
+</td>
+</tr>
+</table>
+
+</td>
+</tr>
+
+<!-- FOOTER -->
+<tr>
+<td style="background:#f9fafb;padding:16px;text-align:center;font-size:12px;color:#6b7280;">
+This is an automated notification from JobBright.
+</td>
+</tr>
+
+</table>
+
+</td>
+</tr>
+</table>
+
+</body>
+</html>
