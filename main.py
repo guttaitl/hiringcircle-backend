@@ -78,13 +78,13 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_methods=["*"],   # 🔥 CHANGE THIS
     allow_headers=["*"],
-    expose_headers=["*"],  # Important for some auth tokens
-    max_age=3600,
 )
 
-print(f"✅ CORS configured for: {origins}")
+@app.options("/{full_path:path}")
+async def options_handler():
+    return {"status": "ok"}
 
 # ==========================================================
 # ROUTES
