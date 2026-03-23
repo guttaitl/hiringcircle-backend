@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 import logging
 logging.basicConfig(level=logging.INFO)
 print("🔥 FASTAPI STARTING...")
+
 # Load .env ONLY for local (Railway already provides env vars)
 if os.getenv("RAILWAY_ENVIRONMENT") is None:
     load_dotenv()
@@ -61,29 +62,46 @@ app = FastAPI(
 )
 
 # ==========================================================
-# 🚨 CORS (FIXED PROPERLY)
+# 🚨 CORS (FIXED - NO DUPLICATE APP)
 # ==========================================================
 
 origins = [
     "http://localhost:3000",
-    "https://hiringcircleusa.vercel.app",   # 🔥 YOUR FRONTEND
-    "https://hiringcircle.us",
-    "https://www.hiringcircle.us",
+    "http://localhost:5173",
+    "https://hiringcircleusa.vercel.app",     # ✅ NO TRAILING SPACE
+    "https://hiringcircle.us",                # ✅ NO TRAILING SPACE
+    "https://www.hiringcircle.us",            # ✅ NO TRAILING SPACE
+    "https://hiringcircle-api.up.railway.app", # Railway domain itself
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://www.hiringcircle.us",
-        "https://hiringcircle.us",
-        "https://hiringcircleusa.vercel.app",
-        "http://localhost:3000",
-    ],
+    allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
+    expose_headers=["*"],  # Important for some auth tokens
+    max_age=3600,
 )
 
+print(f"✅ CORS configured for: {origins}")
+
+# ==========================================================
+# ROUTES
+# ==========================================================
+
+# Include all your routers here
+app.include_router(auth_router, prefix="/api", tags=["auth"])
+app.include_router(verify_router, prefix="/api", tags=["verify"])
+app.include_router(job_router, prefix="/api", tags=["jobs"])
+app.include_router(resume_router, prefix="/api", tags=["resume"])
+app.include_router(ai_match_router, prefix="/api", tags=["ai"])
+app.include_router(employer_router, prefix="/api", tags=["employer"])
+
+# Health check
+@app.get("/health")
+def health():
+    return {"status": "ok", "service": "hiring-circle-api"}
 # ==========================================================
 # STATIC FILES
 # ==========================================================
@@ -133,14 +151,6 @@ app.include_router(verify_router, prefix="/api")
 @app.get("/")
 def root():
     return {"message": "Hiring Circle API running"}
-
-# ==========================================================
-# HEALTH CHECK (IMPORTANT FOR RAILWAY)
-# ==========================================================
-
-@app.get("/health")
-def health():
-    return {"status": "ok"}
 
 # ==========================================================
 # DEBUG WORKER STATUS

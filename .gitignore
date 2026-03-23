@@ -1,3 +1,8 @@
 .env
 .env.*
 !.env.example
+echo "credentials.json" >> .gitignore
+echo "get_refresh_token.py" >> .gitignore
+echo "token.pickle" >> .gitignore
+echo "*.pickle" >> .gitignore
+echo ".env" >> .gitignore

@@ -4,6 +4,10 @@
 fastapi==0.110.0
 uvicorn[standard]
 
+google-auth-oauthlib==1.0.0
+google-auth==2.22.0
+google-api-python-client==2.95.0
+
 # -----------------------------
 # DATABASE
 # -----------------------------
