@@ -26,9 +26,18 @@ EMAIL_FROM_NAME = os.getenv("EMAIL_FROM_NAME", "HiringCircle")
 # ==========================================================
 # EMAIL FUNCTION
 # ==========================================================
+import os
+
 def send_verification_email(email: str, token: str):
-    """Send verification email to user"""
-    if not all([EMAIL_HOST, EMAIL_USER, EMAIL_PASS]):
+    SMTP_USERNAME = os.getenv("SMTP_USERNAME")
+    SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
+    SMTP_FROM = os.getenv("SMTP_FROM_EMAIL")
+
+    print("DEBUG SMTP_USERNAME:", SMTP_USERNAME)
+    print("DEBUG SMTP_PASSWORD:", "SET" if SMTP_PASSWORD else None)
+    print("DEBUG SMTP_FROM:", SMTP_FROM)
+
+    if not all([SMTP_USERNAME, SMTP_PASSWORD, SMTP_FROM]):
         print("EMAIL ERROR: Email configuration missing")
         return False
 
