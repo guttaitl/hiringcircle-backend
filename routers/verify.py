@@ -55,7 +55,4 @@ def verify_email(token: str):
             conn.close()
 
     # 🚀 Redirect to frontend login page after verification
-    return RedirectResponse(
-        url=f"{FRONTEND_LOGIN_URL}/login?verified=true",
-        status_code=302
-    )
+    return {"success": True, "message": "Email verified successfully"}
