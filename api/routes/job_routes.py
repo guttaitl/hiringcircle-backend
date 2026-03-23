@@ -1,12 +1,11 @@
+print("🔥 JOB ROUTES UPDATED v2")
 from datetime import datetime, date
 import uuid
-
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import Optional
 from pydantic import BaseModel
 from sqlalchemy import text
-
 from api.db import get_db
 from api.models import Job
 from api.utils.security import get_current_user
