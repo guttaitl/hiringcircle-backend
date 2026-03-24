@@ -334,7 +334,7 @@ def get_employer_dashboard_stats(
         text("""
         SELECT COUNT(*)
         FROM job_applications ja
-        JOIN job_postings jp ON ja.job_id = jp.id
+        JOIN job_postings jp ON ja.job_id = jp.jobid
         WHERE jp.posted_by = :email
         """),
         {"email": user_email}
@@ -352,7 +352,7 @@ def get_employer_dashboard_stats(
             jp.created_at,
             COUNT(ja.id) as applicants_count
         FROM job_postings jp
-        LEFT JOIN job_applications ja ON ja.job_id = jp.id
+        LEFT JOIN job_applications ja ON ja.job_id = jp.jobid
         WHERE jp.posted_by = :email
         GROUP BY jp.jobid, jp.job_title, jp.client_name, jp.location, jp.employment_type, jp.created_at
         ORDER BY jp.created_at DESC
@@ -413,7 +413,7 @@ def delete_job(
         db.execute(
             text("""
             DELETE FROM job_applications 
-            WHERE job_id = (SELECT id FROM job_postings WHERE jobid = :jobid)
+            WHERE job_id = :jobid
             """),
             {"jobid": job_id}
         )
