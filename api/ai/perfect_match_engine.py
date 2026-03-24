@@ -20,17 +20,13 @@ DOMAIN_WEIGHT = 0.25
 
 
 # =========================================================
-# SAVE MATCHES TO DB (NEW)
+# SAVE MATCHES
 # =========================================================
 def save_matches(conn, jobid, matches):
     cur = conn.cursor()
 
     try:
-        # get internal job id
-        cur.execute(
-            "SELECT id FROM job_postings WHERE jobid=%s",
-            (jobid,)
-        )
+        cur.execute("SELECT id FROM job_postings WHERE jobid=%s", (jobid,))
         job = cur.fetchone()
 
         if not job:
@@ -55,7 +51,7 @@ def save_matches(conn, jobid, matches):
                 )
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
             """, (
-                str(uuid.uuid4()),   # 🔥 THIS FIXES YOUR ISSUE
+                str(uuid.uuid4()),
                 job_internal_id,
                 m["resume_id"],
                 m["match_score"],
@@ -65,55 +61,19 @@ def save_matches(conn, jobid, matches):
                 m["reasoning"],
                 "worker"
             ))
+
         conn.commit()
-        logger.info("Matches saved to database")
+        logger.info("Matches saved")
 
-    except Exception as e:
-        logger.exception("Failed to save matches: %s", e)
-
-
-# =========================================================
-# TEMP EVALUATION OBJECT
-# =========================================================
-class TempEvaluation:
-
-    def __init__(
-        self,
-        resume_id,
-        name,
-        resume_text,
-        job_title,
-        job_description,
-        score,
-        similarity
-    ):
-        self.submission_id = f"TEMP-{resume_id}"
-        self.resume_id = resume_id
-        self.candidate_name = name or "Candidate"
-        self.full_name = name or "Candidate"
-        self.job_id = job_title
-        self.job_title = job_title
-        self.job_description = job_description
-        self.resume_text = resume_text
-        self.match_score = round(float(score), 2)
-        self.semantic_similarity = similarity
-
-        if score >= 90:
-            self.final_recommendation = "Recommended for interview"
-        elif score >= 75:
-            self.final_recommendation = "Consider for screening"
-        else:
-            self.final_recommendation = "Not recommended"
-
-        self.processed_at = datetime.utcnow()
-        self.report_path = None
+    except Exception:
+        logger.exception("Save matches failed")
 
 
 # =========================================================
-# MAIN MATCHING ENGINE (UPDATED)
+# MAIN MATCHING ENGINE
 # =========================================================
 def process_job_matching(job_title, job_description, poster_email, jobid):
-    resume_vector_index = get_resume_vector_index()
+
     logger.info("========================================")
     logger.info("MATCHING STARTED: %s", job_title)
 
@@ -127,26 +87,34 @@ def process_job_matching(job_title, job_description, poster_email, jobid):
 
     try:
         # -------------------------------------------------
-        # EMBEDDING
+        # EMBEDDING (SAFE)
         # -------------------------------------------------
         job_embedding = get_embedding(job_description)
+
+        if not job_embedding:
+            logger.error("Job embedding failed")
+            return
+
         job_domains = detect_domains(job_description)
 
         # -------------------------------------------------
-        # SEARCH
+        # FAISS SEARCH (SAFE)
         # -------------------------------------------------
         resume_vector_index = get_resume_vector_index()
 
-        if not resume_vector_index:
-            logger.error("❌ FAISS index not initialized - no resumes indexed")
+        if not resume_vector_index or not resume_vector_index.is_ready():
+            logger.warning("FAISS index not ready")
             return
 
-        candidate_ids = resume_vector_index.search(job_embedding, top_k=100)
+        candidate_ids = resume_vector_index.search(job_embedding, top_k=50)
 
         if not candidate_ids:
             logger.warning("No candidates found")
             return
 
+        # -------------------------------------------------
+        # FETCH ONLY REQUIRED DATA
+        # -------------------------------------------------
         placeholders = ",".join(["%s"] * len(candidate_ids))
 
         cur.execute(f"""
@@ -157,11 +125,10 @@ def process_job_matching(job_title, job_description, poster_email, jobid):
 
         rows = cur.fetchall()
         if not rows:
-            logger.warning("No resumes loaded")
             return
 
         # -------------------------------------------------
-        # RANKING
+        # FAST RANKING (NO AI YET)
         # -------------------------------------------------
         ranked = []
 
@@ -175,28 +142,34 @@ def process_job_matching(job_title, job_description, poster_email, jobid):
 
             resume_domains = detect_domains(resume_text or "")
             domain_score = domain_similarity(job_domains, resume_domains)
+
             if domain_score <= 1:
                 domain_score *= 100
 
-            final_score = vector_score * VECTOR_WEIGHT + domain_score * DOMAIN_WEIGHT
+            final_score = (
+                vector_score * VECTOR_WEIGHT +
+                domain_score * DOMAIN_WEIGHT
+            )
 
             ranked.append((final_score, rid, resume_path, name, resume_text))
 
-        ranked.sort(reverse=True)
-        top_candidates = ranked[:3]
+        if not ranked:
+            return
 
-        # -------------------------------------------------
-        # MATCH STORAGE PREP
-        # -------------------------------------------------
+        ranked.sort(reverse=True)
+
+        # 👉 ONLY TOP 5 go to AI scoring
+        top_candidates = ranked[:5]
+
         matches = []
         email_payload = []
 
         # -------------------------------------------------
-        # PROCESS CANDIDATES
+        # AI SCORING (LIMITED)
         # -------------------------------------------------
         for score, rid, resume_path, name, resume_text in top_candidates:
 
-            sem_score, similarity, breakdown = compute_structured_score(
+            sem_score, similarity, _ = compute_structured_score(
                 resume_text,
                 job_description
             )
@@ -210,7 +183,6 @@ def process_job_matching(job_title, job_description, poster_email, jobid):
                 "reasoning": "AI evaluated match"
             })
 
-            # report
             sub = session.query(Submission)\
                 .filter(Submission.resume_id == rid)\
                 .order_by(Submission.created_at.desc())\
@@ -221,12 +193,7 @@ def process_job_matching(job_title, job_description, poster_email, jobid):
                 sub.semantic_similarity = similarity
                 report_path = build_basic_report(sub)
             else:
-                temp = TempEvaluation(
-                    rid, name, resume_text,
-                    job_title, job_description,
-                    score, similarity
-                )
-                report_path = build_basic_report(temp)
+                report_path = None
 
             email_payload.append((
                 sem_score,
@@ -238,13 +205,10 @@ def process_job_matching(job_title, job_description, poster_email, jobid):
             ))
 
         # -------------------------------------------------
-        # SAVE MATCHES (NEW)
+        # SAVE + EMAIL
         # -------------------------------------------------
         save_matches(conn, jobid, matches)
 
-        # -------------------------------------------------
-        # EMAIL
-        # -------------------------------------------------
         send_shortlist_email(
             poster_email,
             job_title,
@@ -253,8 +217,8 @@ def process_job_matching(job_title, job_description, poster_email, jobid):
 
         logger.info("MATCHING COMPLETED")
 
-    except Exception as e:
-        logger.exception("Matching engine error: %s", e)
+    except Exception:
+        logger.exception("Matching engine failed")
 
     finally:
         session.close()

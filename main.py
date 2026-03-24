@@ -5,10 +5,10 @@
 import os
 from dotenv import load_dotenv
 import logging
+
 logging.basicConfig(level=logging.INFO)
 print("🔥 FASTAPI STARTING...")
 
-# Load .env ONLY for local (Railway already provides env vars)
 if os.getenv("RAILWAY_ENVIRONMENT") is None:
     load_dotenv()
 
@@ -20,11 +20,11 @@ if not DATABASE_URL:
     raise RuntimeError("❌ DATABASE_URL is missing")
 
 if not OPENAI_API_KEY:
-    print("⚠️ OPENAI_API_KEY missing (AI features disabled)")
+    print("⚠️ OPENAI_API_KEY missing")
 
 if not JWT_SECRET:
-    print("⚠️ JWT_SECRET missing (auth may fail)")
-    
+    print("⚠️ JWT_SECRET missing")
+
 print("✅ Environment loaded")
 
 
@@ -36,8 +36,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from api.app import lifespan
-
 # Routers
 from routers.verify import router as verify_router
 from api.auth_routes import router as auth_router
@@ -47,9 +45,11 @@ from api.routes.ai_match_routes import router as ai_match_router
 from api.routes.employer_routes import router as employer_router
 
 # DB
-from api.db import engine, SessionLocal
+from api.db import engine
 from api.models import Base
-import api.models  # REQUIRED
+
+import threading
+
 
 # ==========================================================
 # APP INIT
@@ -57,20 +57,20 @@ import api.models  # REQUIRED
 
 app = FastAPI(
     title="Hiring Circle API",
-    version="1.0.0",
-    lifespan=lifespan
+    version="1.0.0"
 )
 
+
 # ==========================================================
-# 🚨 CORS (FIXED - NO DUPLICATE APP)
+# CORS
 # ==========================================================
 
 origins = [
     "http://localhost:3000",
     "http://localhost:5173",
-    "https://hiringcircleusa.vercel.app",     # ✅ NO TRAILING SPACE
-    "https://hiringcircle.us",                # ✅ NO TRAILING SPACE
-    "https://www.hiringcircle.us",            # ✅ NO TRAILING SPACE
+    "https://hiringcircleusa.vercel.app",
+    "https://hiringcircle.us",
+    "https://www.hiringcircle.us",
     "https://hiringcircleusa-production.up.railway.app",
 ]
 
@@ -82,21 +82,28 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 # ==========================================================
 # ROUTES
 # ==========================================================
 
-app.include_router(auth_router, prefix="/api", tags=["auth"])
-app.include_router(verify_router, prefix="/api", tags=["verify"])
-app.include_router(job_router, prefix="/api", tags=["jobs"])
-app.include_router(resume_router, prefix="/api", tags=["resume"])
-app.include_router(ai_match_router, prefix="/api", tags=["ai"])
-app.include_router(employer_router, prefix="/api", tags=["employer"])
+app.include_router(auth_router, prefix="/api")
+app.include_router(verify_router, prefix="/api")
+app.include_router(job_router, prefix="/api")
+app.include_router(resume_router, prefix="/api")
+app.include_router(ai_match_router, prefix="/api")
+app.include_router(employer_router, prefix="/api")
 
-# Health check
+
+# ==========================================================
+# HEALTH
+# ==========================================================
+
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "hiring-circle-api"}
+    return {"status": "ok"}
+
+
 # ==========================================================
 # STATIC FILES
 # ==========================================================
@@ -106,27 +113,53 @@ os.makedirs(uploads_dir, exist_ok=True)
 
 app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
 
+
 # ==========================================================
-# DATABASE INIT
+# 🚀 SAFE STARTUP (NON-BLOCKING)
 # ==========================================================
 
 @app.on_event("startup")
 def startup():
     print("🚀 Starting application...")
 
-    # Create tables
+    # DB init
     try:
         Base.metadata.create_all(bind=engine)
         print("✅ Tables ensured")
-    except Exception as e:
-        print("❌ Table creation failed:", e)
 
-    # Optional: test DB connection
-    try:
-        with engine.connect() as conn:
+        with engine.connect():
             print("✅ Database connected")
+
     except Exception as e:
-        raise RuntimeError(f"Database connection failed: {e}")
+        raise RuntimeError(f"Database error: {e}")
+
+    # 🔥 START WORKERS IN BACKGROUND (NON-BLOCKING)
+    def start_background_tasks():
+        try:
+            print("🚀 Starting background workers...")
+
+            from api.workers.system_warmup import warmup_resume_index
+            from api.workers.job_matching_worker import run_job_matching_parallel
+
+            # Run warmup (safe)
+            threading.Thread(
+                target=warmup_resume_index,
+                daemon=True
+            ).start()
+
+            # Run worker
+            threading.Thread(
+                target=run_job_matching_parallel,
+                daemon=True
+            ).start()
+
+            print("✅ Background workers started")
+
+        except Exception as e:
+            print("❌ Worker startup failed:", e)
+
+    threading.Thread(target=start_background_tasks, daemon=True).start()
+
 
 # ==========================================================
 # ROOT
@@ -135,21 +168,3 @@ def startup():
 @app.get("/")
 def root():
     return {"message": "Hiring Circle API running"}
-
-# ==========================================================
-# DEBUG WORKER STATUS
-# ==========================================================
-
-@app.get("/api/workers/status")
-def worker_status():
-    from api.app import worker_threads, shutdown_event
-    from api.core.startup_stats import startup_stats
-
-    return {
-        "shutdown_requested": shutdown_event.is_set(),
-        "workers": [
-            {"name": t.name, "alive": t.is_alive()}
-            for t in worker_threads
-        ],
-        "startup_stats": dict(startup_stats)
-    }

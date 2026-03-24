@@ -1,3 +1,4 @@
+print("🚀🚀🚀 NEW WORKER FILE LOADED 🚀🚀🚀")
 import logging
 import os
 import socket
@@ -231,7 +232,7 @@ def worker_execute():
 
 def run_job_matching_parallel():
     logger.info(f"[{WORKER_ID}] Worker started")
-
+    logger.info("🚀 NEW WORKER RUNNING LOOP 🚀")
     executor = ThreadPoolExecutor(max_workers=MAX_MATCH_WORKERS)
 
     from api.app import shutdown_event
