@@ -1,3 +1,4 @@
+print("🔥 NEW EMAIL SERVICE VERSION LOADED")
 """
 Email Service for Hiring Circle Platform (FINAL VERSION)
 """
@@ -35,7 +36,11 @@ SMTP_RETRIES = int(os.getenv("SMTP_RETRIES", 3))
 # GET JOB RECIPIENTS (ENV)
 # ==========================================================
 def get_job_recipients():
-    raw = os.getenv("JOB_ALERT_EMAILS", "")
+    raw = (
+        os.getenv("JOB_ALERT_EMAILS")  # old support
+        or os.getenv("JOB_ALERT_BCC")  # Railway variable
+        or ""
+    )
     return [e.strip() for e in raw.split(",") if e.strip()]
 
 # ==========================================================
@@ -122,14 +127,16 @@ def build_job_email_html(job: dict):
     </html>
     """
 
-# ==========================================================
-# SEND JOB EMAIL (BCC FIX)
-# ==========================================================
 def send_job_notification(job: dict):
+    print("ENV JOB_ALERT_EMAILS:", os.getenv("JOB_ALERT_EMAILS"))
+    print("ENV JOB_ALERT_BCC:", os.getenv("JOB_ALERT_BCC"))
+
     recipients = get_job_recipients()
 
+    print("PARSED RECIPIENTS:", recipients)
+
     if not recipients:
-        logger.warning("⚠️ No recipients configured (JOB_ALERT_EMAILS)")
+        logger.warning("⚠️ No recipients configured (JOB_ALERT_EMAILS / JOB_ALERT_BCC)")
         return False
 
     msg = MIMEMultipart("alternative")
@@ -141,7 +148,6 @@ def send_job_notification(job: dict):
     html = build_job_email_html(job)
     msg.attach(MIMEText(html, "html"))
 
-    # Include BCC recipients in send list
     all_recipients = ["no-reply@hiringcircle.us"] + recipients
 
     logger.info(f"📧 Sending job email to {len(recipients)} recipients")

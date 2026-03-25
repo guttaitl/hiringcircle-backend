@@ -30,18 +30,22 @@ logger = logging.getLogger("email_service")
 # ==========================================================
 
 def get_email_config():
-    return {
-        "host": os.getenv("SMTP_HOST", "smtp.gmail.com"),
-        "port": int(os.getenv("SMTP_PORT", 587)),
-        "user": os.getenv("SMTP_USER"),
-        "password": os.getenv("SMTP_PASSWORD"),
-        "from_name": os.getenv("EMAIL_FROM_NAME", "HiringCircle"),
-        "from_email": os.getenv("SMTP_FROM") or os.getenv("SMTP_USER"),
-        "to": os.getenv("DEFAULT_TO_EMAIL", ""),
-        "bcc": os.getenv("DEFAULT_BCC_EMAIL", ""),
-        "timeout": int(os.getenv("SMTP_TIMEOUT", 20)),
-        "retries": int(os.getenv("SMTP_RETRIES", 3)),
+    raw = (
+        os.getenv("JOB_ALERT_EMAILS")
+        or os.getenv("JOB_ALERT_BCC")
+        or ""
+    )
+
+    config = {
+        "to": "",
+        "bcc": raw,
+        "from_email": os.getenv("SMTP_USER", ""),
+        "from_name": os.getenv("EMAIL_FROM_NAME", "HiringCircle")
     }
+
+    print("DEBUG CONFIG:", config)
+
+    return config
 
 # ==========================================================
 # SEND EMAIL WITH RETRY (SAFE)
