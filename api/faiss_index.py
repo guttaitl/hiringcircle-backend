@@ -38,8 +38,12 @@ class ResumeVectorIndex:
             dim = vectors.shape[1]
             self.dimension = dim
 
-            # ===== IVF INDEX (SCALES WELL) =====
-            nlist = 100  # number of clusters
+            num_vectors = len(vectors)
+
+            if num_vectors < 100:
+                nlist = max(1, num_vectors // 2)
+            else:
+                nlist = 100
 
             quantizer = faiss.IndexFlatIP(dim)
             index = faiss.IndexIVFFlat(quantizer, dim, nlist)

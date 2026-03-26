@@ -1,21 +1,23 @@
 # ==========================================================
-# EMAIL SENDER (RAILWAY SAFE + PRODUCTION READY)
+# EMAIL SENDER (LOCKED PRODUCTION VERSION)
 # ==========================================================
 
 import os
-import smtplib
+import base64
 import logging
-import time
 from pathlib import Path
 from dotenv import load_dotenv
-from typing import Optional
-import re
 
-from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+from googleapiclient.discovery import build
+from google.oauth2.credentials import Credentials
+
+from openai import OpenAI
 
 # ==========================================================
-# LOAD ENV (ONLY LOCAL)
+# LOAD ENV (LOCAL ONLY)
 # ==========================================================
 
 ROOT_ENV = Path(__file__).resolve().parent.parent / ".env.development"
@@ -25,250 +27,259 @@ if os.getenv("RAILWAY_ENVIRONMENT") is None:
 
 logger = logging.getLogger("email_service")
 
+api_key = os.getenv("OPENAI_API_KEY")
+client = OpenAI(api_key=api_key) if api_key else None
+
 # ==========================================================
-# CONFIG LOADER (NO CRASHES)
+# CONFIG
 # ==========================================================
 
 def get_email_config():
-    raw = (
-        os.getenv("JOB_ALERT_EMAILS")
-        or os.getenv("JOB_ALERT_BCC")
-        or ""
-    )
-
-    config = {
-        "to": "",
-        "bcc": raw,
-        "from_email": os.getenv("SMTP_USER", ""),
-        "from_name": os.getenv("EMAIL_FROM_NAME", "HiringCircle")
+    return {
+        "bcc": os.getenv("JOB_ALERT_BCC", ""),
+        "from_name": os.getenv("EMAIL_FROM_NAME", "HiringCircle"),
+        "client_id": os.getenv("GMAIL_CLIENT_ID"),
+        "client_secret": os.getenv("GMAIL_CLIENT_SECRET"),
+        "refresh_token": os.getenv("GMAIL_REFRESH_TOKEN"),
     }
 
-    print("DEBUG CONFIG:", config)
-
-    return config
 
 # ==========================================================
-# SEND EMAIL WITH RETRY (SAFE)
+# SEND EMAIL (GMAIL API)
 # ==========================================================
 
-def send_email_with_retry(msg, recipients):
+def send_email_gmail_api(to_list, bcc_list, subject, html):
 
     config = get_email_config()
 
-    if not config["user"] or not config["password"]:
-        logger.warning("⚠️ SMTP not configured, skipping email")
+    if not config["client_id"] or not config["refresh_token"]:
+        logger.error("Gmail API not configured")
         return False
 
-    for attempt in range(config["retries"]):
-        try:
-            server = smtplib.SMTP(
-                config["host"],
-                config["port"],
-                timeout=config["timeout"]
-            )
+    try:
+        creds = Credentials(
+            None,
+            refresh_token=config["refresh_token"],
+            client_id=config["client_id"],
+            client_secret=config["client_secret"],
+            token_uri="https://oauth2.googleapis.com/token"
+        )
 
-            server.starttls()
-            server.login(config["user"], config["password"])
+        service = build("gmail", "v1", credentials=creds)
 
-            server.sendmail(
-                config["from_email"],
-                recipients,
-                msg.as_string()
-            )
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"] = f"{config['from_name']} <no-reply@hiringcircle.us>"
+        msg["Reply-To"] = "no-reply@hiringcircle.us"
+        msg["To"] = ", ".join(to_list or ["no-reply@hiringcircle.us"])
 
-            server.quit()
+        if bcc_list:
+            msg["Bcc"] = ", ".join(bcc_list)
 
-            logger.info("✅ Email sent successfully")
-            return True
+        msg.attach(MIMEText(html, "html"))
 
-        except Exception as e:
-            logger.warning(
-                f"⚠️ Email attempt {attempt+1}/{config['retries']} failed: {e}"
-            )
-            time.sleep(2)
+        raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
 
-    logger.error("❌ All email attempts failed")
-    return False
+        service.users().messages().send(
+            userId="me",
+            body={"raw": raw}
+        ).execute()
 
-# ==========================================================
-# FORMAT JOB DESCRIPTION
-# ==========================================================
+        logger.info(f"Email sent to {len(bcc_list)} users")
+        return True
 
-def format_job_description_html(text: str) -> str:
+    except Exception as e:
+        logger.error(f"Email failed: {e}")
+        return False
 
-    if not text:
-        return ""
-
-    text = re.sub(r"\*\*(.*?)\*\*", r"<strong>\1</strong>", text)
-
-    lines = text.splitlines()
-    formatted = []
-    in_list = False
-
-    for line in lines:
-        line = line.strip()
-
-        if line.startswith(("•", "-", "*")):
-            if not in_list:
-                formatted.append("<ul>")
-                in_list = True
-
-            formatted.append(f"<li>{line[1:].strip()}</li>")
-
-        else:
-            if in_list:
-                formatted.append("</ul>")
-                in_list = False
-
-            if line:
-                formatted.append(f"<p>{line}</p>")
-
-    if in_list:
-        formatted.append("</ul>")
-
-    return "".join(formatted)
 
 # ==========================================================
-# BUILD JOB EMAIL HTML
+# AI RESPONSIBILITIES (NO FALLBACK)
+# ==========================================================
+
+def generate_ai_responsibilities(role: str, skills: str, experience: str = ""):
+
+    # ✅ ADD THIS HERE
+    if not client:
+        logger.error("OpenAI client not initialized (missing API key)")
+        return None
+
+    try:
+        prompt = f"""
+Generate 6 to 8 professional job responsibilities.
+
+Role: {role}
+Skills: {skills}
+Experience: {experience}
+
+Rules:
+- Must be specific to role and skills
+- Must include technologies/tools from skills
+- Use strong action verbs (Design, Develop, Implement, Optimize)
+- Avoid generic lines
+- Each line must feel realistic for production jobs
+- Output ONLY bullet points
+"""
+
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.6
+        )
+
+        content = response.choices[0].message.content.strip()
+
+        lines = [
+            line.strip("•- ").strip()
+            for line in content.split("\n")
+            if line.strip()
+        ]
+
+        if len(lines) < 3:
+            return None
+
+        return lines[:7]
+
+    except Exception as e:
+        logger.error(f"AI responsibility generation failed: {e}")
+        return None
+
+# ==========================================================
+# BUILD EMAIL TEMPLATE (LOCKED + PADDED)
 # ==========================================================
 
 def build_job_email_html(job: dict):
 
     role = job.get("job_title", "")
-    company = job.get("poster_company", "Company")
+    company = job.get("poster_company", "HiringCircle")
     location = job.get("location", "-")
+    job_type = job.get("employment_type", "Contract")
+    interview = job.get("interview", "Inperson")
     description = job.get("job_description", "")
-    skills = job.get("skills", "")
-    responsibilities = job.get("responsibilities", "")
-    job_id = job.get("jobid", "")
+    skills = job.get("skills", "") or ""
+    responsibilities = job.get("responsibilities") or ""
 
-    apply_url = f"https://www.hiringcircle.us/jobs/{job_id}"
+    apply_url = f"https://www.hiringcircle.us/apply/{job.get('jobid')}"
 
-    skills_html = "".join(
-        f"<li style='margin-bottom:6px'>{s.strip()}</li>"
-        for s in skills.split("\n") if s.strip()
-    )
+    skills_list = [s.strip() for s in skills.split("\n") if s.strip()]
+    resp_list = [r.strip() for r in responsibilities.split("\n") if r.strip()]
 
-    resp_html = "".join(
-        f"<li style='margin-bottom:6px'>{r.strip()}</li>"
-        for r in responsibilities.split("\n") if r.strip()
-    )
+    # ✅ Replace "we are" safely
+    if description.lower().startswith("we are"):
+        description = description.replace("we are", f"{company} is", 1)
 
-    return f"""
-<html>
-<body style="font-family:Arial;background:#f3f4f6;padding:30px;">
+    # ✅ Build lists safely (NO nested f-strings)
+    skills_html = "".join(f"<li>{s}</li>" for s in skills_list)
+    resp_html = "".join(f"<li>{r}</li>" for r in resp_list)
 
-<table width="720" align="center" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #ddd;">
+    html = f"""
+    <html>
+    <body style="margin:0; padding:0; font-family:Arial, sans-serif; background:#f5f5f5;">
+    
+    <div style="max-width:700px; margin:auto; background:#ffffff; padding:12px 18px;">
 
-<tr>
-<td style="background:#4f46e5;color:#ffffff;padding:16px;font-size:20px;font-weight:700;">
-<table width="100%">
-<tr>
-<td>{company}</td>
-<td align="right">
-<a href="{apply_url}"
-style="background:#22c55e;color:#ffffff;padding:10px 18px;text-decoration:none;border-radius:4px;font-weight:bold;">
-Apply
-</a>
-</td>
-</tr>
-</table>
-</td>
-</tr>
+        <!-- APPLY -->
+        <p style="margin-bottom:12px;">
+            <a href="{apply_url}" style="color:#0066cc; font-weight:bold; text-decoration:none;">
+                ▶ Click Here to Apply
+            </a>
+        </p>
 
-<tr>
-<td style="padding:28px">
+        <!-- DETAILS -->
+        <table style="border-collapse:collapse; margin-bottom:12px;">
+            <tr>
+                <td style="font-weight:bold; padding:4px 12px 4px 0;">Role / Title:</td>
+                <td>{role}</td>
+            </tr>
+            <tr>
+                <td style="font-weight:bold; padding:4px 12px 4px 0;">Location:</td>
+                <td>{location}</td>
+            </tr>
+            <tr>
+                <td style="font-weight:bold; padding:4px 12px 4px 0;">Job Type:</td>
+                <td>{job_type}</td>
+            </tr>
+            <tr>
+                <td style="font-weight:bold; padding:4px 12px 4px 0;">Interview:</td>
+                <td>{interview}</td>
+            </tr>
+        </table>
 
-<p><strong>Role:</strong> {role}</p>
-<p><strong>Location:</strong> {location}</p>
+        <!-- COMPANY -->
+        <p style="font-weight:bold; margin-top:10px;">{company}</p>
 
-<h3>Description</h3>
-<p>{description}</p>
+        <!-- DESCRIPTION -->
+        <p>{description}</p>
 
-<h3>Skills</h3>
-<ul>{skills_html}</ul>
+        <!-- SKILLS -->
+        <p style="font-weight:bold; margin-top:16px;">Skills</p>
+        <ul>
+            {skills_html}
+        </ul>
+    """
 
-<h3>Responsibilities</h3>
-<ul>{resp_html}</ul>
+    # ✅ RESPONSIBILITIES (only if present)
+    if resp_list:
+        html += f"""
+        <p style="font-weight:bold; margin-top:16px;">Responsibilities</p>
+        <ul>
+            {resp_html}
+        </ul>
+        """
 
-</td>
-</tr>
-
-</table>
-
-</body>
-</html>
-"""
+    html += """
+    </div>
+    </body>
+    </html>
+    """
+    return html
 
 # ==========================================================
-# SEND JOB NOTIFICATION
+# SEND JOB EMAIL
 # ==========================================================
-
 def send_job_notification(job: dict):
 
     config = get_email_config()
 
-    to_recipients = [e.strip() for e in config["to"].split(",") if e.strip()]
-    bcc_recipients = [e.strip() for e in config["bcc"].split(",") if e.strip()]
+    bcc_raw = config.get("bcc", "") or ""
+    bcc_list = [e.strip() for e in bcc_raw.split(",") if e.strip()]
 
-    all_recipients = to_recipients + bcc_recipients
-
-    if not all_recipients:
-        logger.warning("⚠️ No recipients configured")
+    if not bcc_list:
+        logger.warning("No recipients configured")
         return False
 
-    subject = f"New Job Opening: {job.get('job_title','')}"
+    subject = f"New Job Opening: {job.get('job_title', '')}"
     html = build_job_email_html(job)
 
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"] = f"{config['from_name']} <{config['from_email']}>"
-    msg["To"] = ", ".join(to_recipients)
-
-    msg.attach(MIMEText(html, "html"))
-
-    logger.info(f"📤 Sending email to: {to_recipients}")
-    if bcc_recipients:
-        logger.info(f"📤 BCC: {bcc_recipients}")
-
-    return send_email_with_retry(msg, all_recipients)
+    return send_email_gmail_api(
+        [],
+        bcc_list,
+        subject,
+        html
+    )
 
 # ==========================================================
-# SEND VERIFICATION EMAIL
+# VERIFY EMAIL
 # ==========================================================
 
 def send_verification_email(recipient: str, verification_url: str):
 
-    config = get_email_config()
-
     if not recipient:
         return False
 
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = "Verify your HiringCircle account"
-    msg["From"] = f"{config['from_name']} <{config['from_email']}>"
-    msg["To"] = recipient
-
     html = f"""
     <html>
-    <body>
-    <h2>Welcome to HiringCircle</h2>
-
-    <p>Please verify your email:</p>
-
-    <p>
-    <a href="{verification_url}"
-    style="background:#2563eb;color:#fff;padding:10px 18px;text-decoration:none;">
-    Verify Email
-    </a>
-    </p>
-
-    <p>{verification_url}</p>
-
+    <body style="font-family:Arial;">
+        <h2>Welcome to HiringCircle</h2>
+        <p>Please verify your email:</p>
+        <a href="{verification_url}">Verify Email</a>
     </body>
     </html>
     """
 
-    msg.attach(MIMEText(html, "html"))
-
-    return send_email_with_retry(msg, [recipient])
+    return send_email_gmail_api(
+        [recipient],
+        [],
+        "Verify your account",
+        html
+    )

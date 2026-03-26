@@ -1,8 +1,8 @@
-import os
 import shutil
 import uuid
 import hashlib
 import json
+import os
 from typing import Optional
 
 from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
@@ -14,7 +14,7 @@ from api.db import get_db
 router = APIRouter()
 
 # =========================================================
-# UPLOAD RESUME
+# UPLOAD RESUME (FIXED VERSION)
 # =========================================================
 
 @router.post("/resumes/upload")
@@ -25,97 +25,107 @@ async def upload_resume(
     job_id: Optional[str] = Form(None),
     db: Session = Depends(get_db)
 ):
-    """
-    Upload resume and store metadata
-    """
-
     try:
+        # ------------------------------------------
+        # Parse profile JSON (optional use)
+        # ------------------------------------------
+        try:
+            profile_data = json.loads(profile)
+        except:
+            profile_data = {}
 
-        # Parse profile JSON
-        profile_data = json.loads(profile)
-
-        # --------------------------------------------------
-        # CREATE UPLOAD DIRECTORY
-        # --------------------------------------------------
-
-        upload_dir = "uploads/resumes"
+        # ------------------------------------------
+        # Directory (Railway-safe path)
+        # ------------------------------------------
+        upload_dir = "/app/uploads/resumes"
         os.makedirs(upload_dir, exist_ok=True)
 
-        # --------------------------------------------------
-        # GENERATE FILE NAME
-        # --------------------------------------------------
-
-        resume_id = str(uuid.uuid4())
-
-        filename = f"{resume_id}_{file.filename}"
-
+        # ------------------------------------------
+        # Unique filename
+        # ------------------------------------------
+        unique_id = str(uuid.uuid4())
+        filename = f"{unique_id}_{file.filename}"
         filepath = os.path.join(upload_dir, filename).replace("\\", "/")
 
-        # --------------------------------------------------
-        # SAVE FILE
-        # --------------------------------------------------
-
+        # ------------------------------------------
+        # Save file
+        # ------------------------------------------
         with open(filepath, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
-        # --------------------------------------------------
-        # GENERATE FILE HASH (FOR DUPLICATE DETECTION)
-        # --------------------------------------------------
+        print(f"✅ File saved: {filepath}")
 
+        # ------------------------------------------
+        # Generate file hash (for duplicate detection)
+        # ------------------------------------------
         with open(filepath, "rb") as f:
             file_hash = hashlib.sha256(f.read()).hexdigest()
 
-        # --------------------------------------------------
-        # INSERT INTO candidate_resumes
-        # --------------------------------------------------
+        existing = db.execute(
+            text("""
+            SELECT id FROM candidate_resumes
+            WHERE file_hash = :file_hash
+            """),
+            {"file_hash": file_hash}
+        ).fetchone()
 
-        db.execute(
+        if existing:
+            return {
+                "success": True,
+                "resume_id": existing[0],
+                "message": "Duplicate resume ignored"
+            }
+
+        # ------------------------------------------
+        # Insert into candidate_resumes (FIXED)
+        # ------------------------------------------
+        result = db.execute(
             text("""
             INSERT INTO candidate_resumes (
-                id,
                 user_id,
                 file_path,
-                original_file_name,
-                resume_hash,
+                file_hash,
+                parsed_successfully,
                 created_at
             )
             VALUES (
-                :id,
                 :user_id,
                 :file_path,
-                :original_file_name,
-                :resume_hash,
+                :file_hash,
+                false,
                 NOW()
             )
+            RETURNING id
             """),
             {
-                "id": resume_id,
                 "user_id": user_id,
                 "file_path": filepath,
-                "original_file_name": file.filename,
-                "resume_hash": file_hash
+                "file_hash": file_hash
             }
         )
 
-        # --------------------------------------------------
-        # ADD TO JOB MATCHING QUEUE
-        # --------------------------------------------------
+        resume_id = result.fetchone()[0]
 
-        db.execute(
-            text("""
-            INSERT INTO job_matching_queue (
-                resume_id,
-                created_at
+        # Add to job matching queue ONLY if job_id exists
+        if job_id:
+            db.execute(
+                text("""
+                INSERT INTO job_matching_queue (
+                    job_id,
+                    resume_id,
+                    created_at
+                )
+                VALUES (
+                    :job_id,
+                    :resume_id,
+                    NOW()
+                )
+                """),
+                {
+                    "job_id": job_id,
+                    "resume_id": resume_id
+                }
             )
-            VALUES (
-                :resume_id,
-                NOW()
-            )
-            """),
-            {
-                "resume_id": resume_id
-            }
-        )
 
         db.commit()
 
@@ -126,14 +136,13 @@ async def upload_resume(
         }
 
     except Exception as e:
-
         db.rollback()
+        print(f"❌ Upload failed: {e}")
 
         raise HTTPException(
             status_code=500,
             detail=str(e)
         )
-
 
 # =========================================================
 # SEARCH RESUMES

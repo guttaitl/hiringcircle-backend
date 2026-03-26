@@ -9,6 +9,11 @@ import logging
 logging.basicConfig(level=logging.INFO)
 print("🔥 FASTAPI STARTING...")
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+)
+
 if os.getenv("RAILWAY_ENVIRONMENT") is None:
     load_dotenv()
 
@@ -94,6 +99,8 @@ app.include_router(resume_router, prefix="/api")
 app.include_router(ai_match_router, prefix="/api")
 app.include_router(employer_router, prefix="/api")
 
+for route in app.routes:
+    print("ROUTE:", route.path)
 
 # ==========================================================
 # HEALTH

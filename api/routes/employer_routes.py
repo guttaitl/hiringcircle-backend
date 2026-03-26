@@ -10,7 +10,7 @@ import json
 import os
 
 from api.utils.ai_job_description import generate_structured_job_content
-from api.utils.email_sender import send_job_notification
+from api.utils.email_sender import send_job_notification, generate_ai_responsibilities
 from api.db import get_db
 from api.utils.security import get_current_user
 
@@ -32,6 +32,7 @@ class PostJobRequest(BaseModel):
     visa_transfer: Optional[str] = "No"
     job_description: Optional[str] = None
     skills: Optional[str] = None
+    responsibilities: Optional[str] = None
 
 
 # =========================================================
@@ -95,6 +96,8 @@ async def post_job(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
+    import uuid
+
     user_email = current_user.get("email")
 
     # =====================================================
@@ -112,11 +115,9 @@ async def post_job(
 
     if user_result:
         user_company = user_result.company or user_email.split('@')[1].split('.')[0].upper()
-        user_name = user_result.full_name or user_email
     else:
         domain = user_email.split('@')[1]
         user_company = domain.split('.')[0].upper()
-        user_name = user_email
 
     if request.client_name:
         user_company = request.client_name.upper()
@@ -124,11 +125,32 @@ async def post_job(
     # =====================================================
     # JOB ID
     # =====================================================
-    job_id = str(uuid.uuid4())[:8].upper()
+    job_public_id = str(uuid.uuid4())[:8].upper()
 
     job_description = request.job_description
     skills = request.skills
-    responsibilities = None
+
+    # =====================================================
+    # RESPONSIBILITIES (AI ONLY)
+    # =====================================================
+    responsibilities = request.responsibilities or ""
+
+    if not responsibilities:
+        try:
+            ai_resp = generate_ai_responsibilities(
+                role=request.job_title,
+                skills=skills or "",
+                experience=request.experience or ""
+            )
+
+            if ai_resp:
+                responsibilities = "\n".join(ai_resp)
+            else:
+                responsibilities = ""
+
+        except Exception as e:
+            logger.error(f"AI responsibility generation failed: {e}")
+            responsibilities = ""
 
     # =====================================================
     # AI GENERATION
@@ -164,16 +186,16 @@ async def post_job(
             INSERT INTO job_postings (
                 jobid, created_date, job_title, client_name, location,
                 work_authorization, experience, salary, employment_type,
-                visa_transfer, job_description, skills, posted_by, created_at
+                visa_transfer, job_description, skills, responsibilities, posted_by, created_at
             ) VALUES (
                 :jobid, :created_date, :job_title, :client_name, :location,
                 :work_authorization, :experience, :salary, :employment_type,
-                :visa_transfer, :job_description, :skills, :posted_by, NOW()
+                :visa_transfer, :job_description, :skills, :responsibilities, :posted_by, NOW()
             )
-            RETURNING id, jobid
+            RETURNING jobid
             """),
             {
-                "jobid": job_id,
+                "jobid": job_public_id,
                 "created_date": date.today(),
                 "job_title": request.job_title,
                 "client_name": request.client_name or "Direct Client",
@@ -185,42 +207,35 @@ async def post_job(
                 "visa_transfer": request.visa_transfer,
                 "job_description": job_description,
                 "skills": skills,
+                "responsibilities": responsibilities,
                 "posted_by": user_email
             }
         )
 
         job_row = result.fetchone()
-        job_public_id = job_row.jobid
-
         db.commit()
 
     except Exception as e:
         db.rollback()
-        return {"success": False, "message": str(e)}
+        logger.error(f"❌ Job insert failed: {e}")
+        return {
+            "success": False,
+            "error": "Job creation failed"
+        }
 
     # =====================================================
-    # ✅ FIXED MATCHING QUEUE INSERT
+    # MATCHING QUEUE
     # =====================================================
     try:
         db.execute(
             text("""
             INSERT INTO job_matching_queue (
-                jobid,
-                job_title,
-                job_description,
-                poster_email,
-                status,
-                attempts,
-                created_at
+                jobid, job_title, job_description,
+                poster_email, status, attempts, created_at
             )
             VALUES (
-                :jobid,
-                :title,
-                :jd,
-                :email,
-                'PENDING',
-                0,
-                NOW()
+                :jobid, :title, :jd,
+                :email, 'PENDING', 0, NOW()
             )
             """),
             {
@@ -231,25 +246,32 @@ async def post_job(
             }
         )
         db.commit()
-
     except Exception as e:
         logger.warning(f"Queue insert failed: {e}")
 
     # =====================================================
-    # EMAIL
+    # EMAIL (NON-BLOCKING)
     # =====================================================
     try:
-        background_tasks.add_task(send_job_notification, {
-            "job_title": request.job_title,
-            "poster_company": user_company,
-            "location": request.location or "Remote",
-            "job_description": job_description,
-            "skills": skills,
-            "jobid": job_public_id
-        })
-    except Exception:
-        pass
+        background_tasks.add_task(
+            send_job_notification,
+            {
+                "job_title": request.job_title,
+                "poster_company": user_company,
+                "location": request.location or "Remote",
+                "job_description": job_description,
+                "skills": skills,
+                "responsibilities": responsibilities,
+                "jobid": job_public_id,
+                "employment_type": request.employment_type
+            }
+        )
+    except Exception as e:
+        logger.error(f"Email task failed: {e}")
 
+    # =====================================================
+    # ✅ FINAL RETURN (CRITICAL FIX)
+    # =====================================================
     return {
         "success": True,
         "jobid": job_public_id

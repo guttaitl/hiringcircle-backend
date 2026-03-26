@@ -7,7 +7,8 @@ from api.db import get_db_conn
 from api.workers.resume_parsing_worker import process_resume_parsing
 from api.ai.embeddings import get_embedding
 from api.core.startup_stats import startup_stats
-
+import threading
+from api.workers.resume_scanner import start_scanner
 from api.faiss_index import ResumeVectorIndex
 
 logger = logging.getLogger("system_warmup")
@@ -125,15 +126,12 @@ def load_embeddings(cur):
 # MAIN WARMUP
 # =========================================================
 def warmup_resume_index():
-
+    start_time = time.time()   # ✅ FIX
     logger.info("WARMUP STARTED")
-    start_time = time.time()
-
     conn = get_db_conn()
     cur = conn.cursor()
 
     try:
-
         # -------------------------------------------------
         # LOAD EXISTING FAISS INDEX (FAST START)
         # -------------------------------------------------

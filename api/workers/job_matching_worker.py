@@ -211,8 +211,13 @@ def mark_failed(queue_id, attempts, error):
 def worker_execute():
     job = fetch_next_matching_job()
 
+    if not job_id:
+        logger.info("⏭️ Skipping resume (no job_id)")
+        return None
+
     if not job:
-        return
+        logger.warning(f"⚠️ Job not found: {job_id}")
+        return None
 
     queue_id, job_id, title, jd, email, attempts = job
 
