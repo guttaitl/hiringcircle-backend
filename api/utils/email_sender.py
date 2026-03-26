@@ -144,10 +144,6 @@ Rules:
         logger.error(f"AI responsibility generation failed: {e}")
         return None
 
-# ==========================================================
-# BUILD EMAIL TEMPLATE (LOCKED + PADDED)
-# ==========================================================
-
 def build_job_email_html(job: dict):
 
     role = job.get("job_title", "")
@@ -164,74 +160,165 @@ def build_job_email_html(job: dict):
     skills_list = [s.strip() for s in skills.split("\n") if s.strip()]
     resp_list = [r.strip() for r in responsibilities.split("\n") if r.strip()]
 
-    # ✅ Replace "we are" safely
+    # Replace "we are"
     if description.lower().startswith("we are"):
         description = description.replace("we are", f"{company} is", 1)
 
-    # ✅ Build lists safely (NO nested f-strings)
     skills_html = "".join(f"<li>{s}</li>" for s in skills_list)
     resp_html = "".join(f"<li>{r}</li>" for r in resp_list)
 
     html = f"""
-    <html>
-    <body style="margin:0; padding:0; font-family:Arial, sans-serif; background:#f5f5f5;">
-    
-    <div style="max-width:700px; margin:auto; background:#ffffff; padding:12px 18px;">
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+    body {{
+        margin:0;
+        padding:0;
+        font-family: Arial, sans-serif;
+        background:#ffffff;
+    }}
 
-        <!-- APPLY -->
-        <p style="margin-bottom:12px;">
-            <a href="{apply_url}" style="color:#0066cc; font-weight:bold; text-decoration:none;">
-                ▶ Click Here to Apply
-            </a>
-        </p>
+    table {{
+        border-collapse: collapse;
+    }}
 
-        <!-- DETAILS -->
-        <table style="border-collapse:collapse; margin-bottom:12px;">
-            <tr>
-                <td style="font-weight:bold; padding:4px 12px 4px 0;">Role / Title:</td>
-                <td>{role}</td>
-            </tr>
-            <tr>
-                <td style="font-weight:bold; padding:4px 12px 4px 0;">Location:</td>
-                <td>{location}</td>
-            </tr>
-            <tr>
-                <td style="font-weight:bold; padding:4px 12px 4px 0;">Job Type:</td>
-                <td>{job_type}</td>
-            </tr>
-            <tr>
-                <td style="font-weight:bold; padding:4px 12px 4px 0;">Interview:</td>
-                <td>{interview}</td>
-            </tr>
-        </table>
+    .container {{
+        width:700px;
+    }}
 
-        <!-- COMPANY -->
-        <p style="font-weight:bold; margin-top:10px;">{company}</p>
+    .content {{
+        padding:16px 18px;
+    }}
 
-        <!-- DESCRIPTION -->
-        <p>{description}</p>
+    .btn {{
+        background:#0066cc;
+        color:#ffffff !important;
+        text-decoration:none;
+        padding:10px 16px;
+        display:inline-block;
+        border-radius:4px;
+        font-weight:bold;
+    }}
 
-        <!-- SKILLS -->
-        <p style="font-weight:bold; margin-top:16px;">Skills</p>
-        <ul>
-            {skills_html}
-        </ul>
-    """
+    /* MOBILE */
+    @media only screen and (max-width: 600px) {{
 
-    # ✅ RESPONSIBILITIES (only if present)
+        .container {{
+            width:100% !important;
+        }}
+
+        .content {{
+            padding:14px !important;
+        }}
+
+        .stack td {{
+            display:block;
+            width:100% !important;
+            padding:6px 0 !important;
+        }}
+
+        p, li {{
+            font-size:15px !important;
+            line-height:1.5 !important;
+        }}
+
+        .btn {{
+            display:block;
+            width:100%;
+            text-align:center;
+        }}
+    }}
+</style>
+</head>
+
+<body>
+
+<table width="100%" cellpadding="0" cellspacing="0">
+<tr>
+<td align="center" style="padding:0 16px;">
+
+    <!-- MAIN CONTAINER -->
+    <table class="container" width="700" cellpadding="0" cellspacing="0" style="background:#ffffff;">
+        <tr>
+            <td class="content">
+
+                <!-- APPLY BUTTON -->
+                <p style="margin-bottom:16px;">
+                    <a href="{apply_url}" class="btn">
+                        Apply Now
+                    </a>
+                </p>
+
+                <!-- DETAILS -->
+                <table style="margin-bottom:14px;">
+                    <tr class="stack">
+                        <td style="font-weight:bold; padding:4px 12px 4px 0;">Role / Title:</td>
+                        <td>{role}</td>
+                    </tr>
+                    <tr class="stack">
+                        <td style="font-weight:bold; padding:4px 12px 4px 0;">Location:</td>
+                        <td>{location}</td>
+                    </tr>
+                    <tr class="stack">
+                        <td style="font-weight:bold; padding:4px 12px 4px 0;">Job Type:</td>
+                        <td>{job_type}</td>
+                    </tr>
+                    <tr class="stack">
+                        <td style="font-weight:bold; padding:4px 12px 4px 0;">Interview:</td>
+                        <td>{interview}</td>
+                    </tr>
+                </table>
+
+                <!-- COMPANY -->
+                <p style="font-weight:bold; margin-top:10px; font-size:16px;">
+                    {company}
+                </p>
+
+                <!-- DESCRIPTION -->
+                <p style="margin-top:8px;">
+                    {description}
+                </p>
+
+                <!-- SKILLS -->
+                <p style="font-weight:bold; margin-top:16px;">
+                    Skills
+                </p>
+                <ul style="padding-left:18px; margin-top:8px;">
+                    {skills_html}
+                </ul>
+"""
     if resp_list:
         html += f"""
-        <p style="font-weight:bold; margin-top:16px;">Responsibilities</p>
-        <ul>
-            {resp_html}
-        </ul>
-        """
+                <!-- RESPONSIBILITIES -->
+                <p style="font-weight:bold; margin-top:16px;">
+                    Responsibilities
+                </p>
+                <ul style="padding-left:18px; margin-top:8px;">
+                    {resp_html}
+                </ul>
+"""
 
-    html += """
-    </div>
-    </body>
-    </html>
-    """
+    html += f"""
+                <!-- FOOTER CTA -->
+                <p style="margin-top:20px;">
+                    <a href="{apply_url}" class="btn">
+                        Apply for this Job
+                    </a>
+                </p>
+
+            </td>
+        </tr>
+    </table>
+
+</td>
+</tr>
+</table>
+
+</body>
+</html>
+"""
     return html
 
 # ==========================================================
