@@ -147,7 +147,7 @@ Rules:
 def build_job_email_html(job: dict):
 
     role = job.get("job_title", "")
-    company = job.get("poster_company", "HiringCircle")
+    company = job.get("user_company") or "HiringCircle"
     location = job.get("location", "-")
     job_type = job.get("employment_type", "Contract")
     interview = job.get("interview", "Inperson")
@@ -160,10 +160,29 @@ def build_job_email_html(job: dict):
     skills_list = [s.strip() for s in skills.split("\n") if s.strip()]
     resp_list = [r.strip() for r in responsibilities.split("\n") if r.strip()]
 
-    # Replace "we are"
-    if description.lower().startswith("we are"):
-        description = description.replace("we are", f"{company} is", 1)
+    import re
 
+    desc = (description or "").strip()
+
+    # Normalize multiple spaces
+    desc = re.sub(r"\s+", " ", desc)
+
+    # Replace variations of "we are"
+    desc = re.sub(
+        r"^(we\s+are|we're)\b",
+        f"{company} is",
+        desc,
+        flags=re.IGNORECASE
+    )
+
+    # If still doesn't start with company → enforce recruiter tone
+    if not desc.lower().startswith(company.lower()):
+        if desc:
+            desc = f"{company} is seeking {desc[0].lower() + desc[1:]}"
+        else:
+            desc = f"{company} is seeking a qualified candidate for this role."
+
+    description = desc
     skills_html = "".join(f"<li>{s}</li>" for s in skills_list)
     resp_html = "".join(f"<li>{r}</li>" for r in resp_list)
 
@@ -176,151 +195,152 @@ def build_job_email_html(job: dict):
     body {{
         margin:0;
         padding:0;
-        font-family: Arial, sans-serif;
         background:#ffffff;
+        font-family: Calibri, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+        color:#222;
+        line-height:1.5;
+    }}
+
+    .wrap {{
+        padding:0 6px;
+    }}
+
+    .text {{
+        font-size:14px;
     }}
 
     table {{
-        border-collapse: collapse;
+        border-collapse:collapse;
+        font-size:14px;
     }}
 
-    .container {{
-        width:700px;
+    td {{
+        padding:2px 8px 2px 0;
+        vertical-align:top;
     }}
 
-    .content {{
-        padding:16px 18px;
+    .label {{
+        font-weight:600;
+        white-space:nowrap;
     }}
 
-    .btn {{
-        background:#0066cc;
-        color:#ffffff !important;
-        text-decoration:none;
-        padding:10px 16px;
-        display:inline-block;
-        border-radius:4px;
-        font-weight:bold;
+    ul {{
+        margin:6px 0 10px 18px;
+        padding:0;
+    }}
+
+    li {{
+        margin:2px 0;
     }}
 
     /* MOBILE */
-    @media only screen and (max-width: 600px) {{
-
-        .container {{
-            width:100% !important;
+    @media only screen and (max-width:600px) {{
+        .wrap {{
+            padding:0 6px !important;
         }}
 
-        .content {{
-            padding:14px !important;
-        }}
-
-        .stack td {{
-            display:block;
-            width:100% !important;
-            padding:6px 0 !important;
-        }}
-
-        p, li {{
-            font-size:15px !important;
-            line-height:1.5 !important;
-        }}
-
-        .btn {{
+        td {{
             display:block;
             width:100%;
-            text-align:center;
+            padding:2px 0 !important;
+        }}
+
+        .label {{
+            margin-top:6px;
         }}
     }}
 </style>
 </head>
 
 <body>
+<div class="wrap text">
 
-<table width="100%" cellpadding="0" cellspacing="0">
-<tr>
-<td align="center" style="padding:0 16px;">
+    <!-- APPLY LINK (natural style) -->
+    <p style="margin:6px 0 10px 0;">
+        <a href="{apply_url}" style="color:#0b57d0; text-decoration:underline;">
+            Apply here
+        </a>
+    </p>
 
-    <!-- MAIN CONTAINER -->
-    <table class="container" width="700" cellpadding="0" cellspacing="0" style="background:#ffffff;">
+    <!-- JOB DETAILS -->
+    <table>
         <tr>
-            <td class="content">
+            <td class="label">Role:</td>
+            <td>{role}</td>
+        </tr>
+        <tr>
+            <td class="label">Location:</td>
+            <td>{location}</td>
+        </tr>
+        <tr>
+            <td class="label">Type:</td>
+            <td>{job_type}</td>
+        </tr>
+        <tr>
+            <td class="label">Interview:</td>
+            <td>{interview}</td>
+        </tr>
+        </table>
 
-                <!-- APPLY BUTTON -->
-                <p style="margin-bottom:16px;">
-                    <a href="{apply_url}" class="btn">
-                        Apply Now
-                    </a>
-                </p>
+        <table width="100%">
+        <tr><td height="10"></td></tr>
+        </table>
 
-                <!-- DETAILS -->
-                <table style="margin-bottom:14px;">
-                    <tr class="stack">
-                        <td style="font-weight:bold; padding:4px 12px 4px 0;">Role / Title:</td>
-                        <td>{role}</td>
-                    </tr>
-                    <tr class="stack">
-                        <td style="font-weight:bold; padding:4px 12px 4px 0;">Location:</td>
-                        <td>{location}</td>
-                    </tr>
-                    <tr class="stack">
-                        <td style="font-weight:bold; padding:4px 12px 4px 0;">Job Type:</td>
-                        <td>{job_type}</td>
-                    </tr>
-                    <tr class="stack">
-                        <td style="font-weight:bold; padding:4px 12px 4px 0;">Interview:</td>
-                        <td>{interview}</td>
-                    </tr>
-                </table>
 
-                <!-- COMPANY -->
-                <p style="font-weight:bold; margin-top:10px; font-size:16px;">
-                    {company}
-                </p>
+        <table width="100%">
+        <tr>
+        <td style="padding:0 12px;">
+            <p style="margin:0;">
+                {description}
+            </p>
+        </td>
+        </tr>
+        </table>
 
-                <!-- DESCRIPTION -->
-                <p style="margin-top:8px;">
-                    {description}
-                </p>
+        <table width="100%">
+        <tr><td height="10"></td></tr>
+        </table>
 
-                <!-- SKILLS -->
-                <p style="font-weight:bold; margin-top:16px;">
-                    Skills
-                </p>
-                <ul style="padding-left:18px; margin-top:8px;">
-                    {skills_html}
-                </ul>
+    <!-- SKILLS -->
+    <p style="margin:10px 0 4px 0; font-weight:600;">Skills:</p>
+    <ul>
+        {skills_html}
+    </ul>
 """
+
     if resp_list:
         html += f"""
-                <!-- RESPONSIBILITIES -->
-                <p style="font-weight:bold; margin-top:16px;">
-                    Responsibilities
-                </p>
-                <ul style="padding-left:18px; margin-top:8px;">
-                    {resp_html}
-                </ul>
+    <!-- RESPONSIBILITIES -->
+    <p style="margin:10px 0 4px 0; font-weight:600;">Responsibilities:</p>
+    <ul>
+        {resp_html}
+    </ul>
 """
 
-    html += f"""
-                <!-- FOOTER CTA -->
-                <p style="margin-top:20px;">
-                    <a href="{apply_url}" class="btn">
-                        Apply for this Job
-                    </a>
-                </p>
-
-            </td>
-        </tr>
+    # ✅ ADD GAP (email-safe)
+    html += """
+    <table width="100%">
+        <tr><td height="14"></td></tr>
     </table>
+    """
 
-</td>
-</tr>
-</table>
+    # ✅ ADD SIGNATURE
+    poster_name = job.get("user_name") or ""
 
+    html += f"""
+    <!-- SIGNATURE -->
+    <p style="margin:0;">
+        {poster_name}<br>
+        {company}
+    </p>
+"""
+
+    html += """
+</div>
 </body>
 </html>
 """
     return html
-
 # ==========================================================
 # SEND JOB EMAIL
 # ==========================================================

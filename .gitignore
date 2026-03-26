@@ -7,10 +7,6 @@ echo "token.pickle" >> .gitignore
 echo "*.pickle" >> .gitignore
 echo ".env" >> .gitignore
 credentials.json
-uploads/
-uploads/*
-uploads/resumes/
-*.pdf
-*.docx
-*.doc
+!uploads/
+!uploads/*
 credentials.json
