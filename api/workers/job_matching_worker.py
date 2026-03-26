@@ -57,8 +57,6 @@ def recover_stuck_jobs():
         conn.close()
 
 
-# ================= FETCH JOB (ATOMIC LOCK) ================= #
-
 def fetch_next_matching_job():
     conn = get_db_conn()
     conn.autocommit = False
@@ -93,7 +91,27 @@ def fetch_next_matching_job():
 
         queue_id, job_id, attempts = row
 
+        # ------------------------------------------
+        # ✅ FIX 1: Skip if job_id is NULL
+        # ------------------------------------------
+        if not job_id:
+            logger.info(f"[{WORKER_ID}] ⏭️ Skipping queue {queue_id} (no job_id)")
+
+            cur.execute(
+                """
+                UPDATE job_matching_queue
+                SET status = 'SKIPPED'
+                WHERE id = %s
+                """,
+                (queue_id,),
+            )
+
+            conn.commit()
+            return None
+
+        # ------------------------------------------
         # Fetch job details
+        # ------------------------------------------
         cur.execute(
             """
             SELECT job_title, job_description, posted_by
@@ -105,8 +123,24 @@ def fetch_next_matching_job():
 
         job_row = cur.fetchone()
 
+        # ------------------------------------------
+        # ✅ FIX 2: Handle missing job safely
+        # ------------------------------------------
         if not job_row:
-            raise Exception(f"Job not found: {job_id}")
+            logger.warning(f"[{WORKER_ID}] ⚠️ Job not found: {job_id}")
+
+            cur.execute(
+                """
+                UPDATE job_matching_queue
+                SET status = 'FAILED',
+                    last_error = 'Job not found'
+                WHERE id = %s
+                """,
+                (queue_id,),
+            )
+
+            conn.commit()
+            return None
 
         title, jd, email = job_row
 
@@ -124,7 +158,6 @@ def fetch_next_matching_job():
     finally:
         cur.close()
         conn.close()
-
 
 # ================= MARK DONE ================= #
 

@@ -106,7 +106,6 @@ async def upload_resume(
 
         resume_id = result.fetchone()[0]
 
-        # Add to job matching queue ONLY if job_id exists
         if job_id:
             db.execute(
                 text("""
@@ -126,7 +125,6 @@ async def upload_resume(
                     "resume_id": resume_id
                 }
             )
-
         db.commit()
 
         return {
