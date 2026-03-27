@@ -57,11 +57,16 @@ from api.linkedin_routes import router as linkedin_router
 # APP INIT
 # ==========================================================
 
+
 app = FastAPI(
     title="Hiring Circle API",
     version="1.0.0"
 )
 
+
+@app.get("/test-linkedin")
+def test_linkedin():
+    return {"status": "linkedin route working"}
 
 # ==========================================================
 # CORS
