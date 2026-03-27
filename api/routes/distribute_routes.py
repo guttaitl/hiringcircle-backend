@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from api.db import get_db
-from job_distribution import JobDistributor, validate_portal_config, auto_distribute_job
+from api.job_distribution import JobDistributor, validate_portal_config, auto_distribute_job
 import logging
 
 router = APIRouter()
