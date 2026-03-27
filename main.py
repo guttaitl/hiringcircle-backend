@@ -1,7 +1,7 @@
 # ==========================================================
 # ENVIRONMENT SETUP
 # ==========================================================
-
+print("🚨🚨🚨 CORRECT MAIN LOADED 🚨🚨🚨")
 import os
 from dotenv import load_dotenv
 import logging
@@ -9,7 +9,7 @@ import threading
 
 logging.basicConfig(level=logging.INFO)
 print("🔥 FASTAPI STARTING...")
-print("🚨🚨🚨 PRODUCTION MAIN LOADED 🚨🚨🚨")
+
 
 logging.basicConfig(
     level=logging.INFO,
