@@ -5,6 +5,7 @@
 import os
 from dotenv import load_dotenv
 import logging
+import threading
 
 logging.basicConfig(level=logging.INFO)
 print("🔥 FASTAPI STARTING...")
@@ -36,25 +37,19 @@ print("✅ Environment loaded")
 # ==========================================================
 # IMPORTS
 # ==========================================================
-
+from api.routes.job_routes import router as job_router
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-
-# Routers
 from routers.verify import router as verify_router
 from api.auth_routes import router as auth_router
 from api.routes.job_routes import router as job_router
 from api.routes.resume_routes import router as resume_router
 from api.routes.ai_match_routes import router as ai_match_router
 from api.routes.employer_routes import router as employer_router
-
-# DB
+from api.routes.distribute_routes import router as distribute_router
 from api.db import engine
 from api.models import Base
-
-import threading
-
 
 # ==========================================================
 # APP INIT
@@ -98,6 +93,7 @@ app.include_router(job_router, prefix="/api")
 app.include_router(resume_router, prefix="/api")
 app.include_router(ai_match_router, prefix="/api")
 app.include_router(employer_router, prefix="/api")
+app.include_router(distribute_router, prefix="/api")
 
 for route in app.routes:
     print("ROUTE:", route.path)
