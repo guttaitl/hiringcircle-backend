@@ -1,7 +1,7 @@
 # ==========================================================
 # ENVIRONMENT SETUP
 # ==========================================================
-print("🚨🚨🚨 CORRECT MAIN LOADED 🚨🚨🚨")
+print("🚨 RUNNING FILE:", __file__)
 import os
 from dotenv import load_dotenv
 import logging
