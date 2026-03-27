@@ -50,6 +50,8 @@ from api.routes.employer_routes import router as employer_router
 from api.routes.distribute_routes import router as distribute_router
 from api.db import engine
 from api.models import Base
+from api.linkedin_routes import router as linkedin_router
+
 
 # ==========================================================
 # APP INIT
@@ -94,6 +96,7 @@ app.include_router(resume_router, prefix="/api")
 app.include_router(ai_match_router, prefix="/api")
 app.include_router(employer_router, prefix="/api")
 app.include_router(distribute_router, prefix="/api")
+app.include_router(linkedin_router, prefix="/api")
 
 for route in app.routes:
     print("ROUTE:", route.path)
