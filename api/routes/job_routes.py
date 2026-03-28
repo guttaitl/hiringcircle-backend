@@ -9,6 +9,7 @@ from sqlalchemy import text
 from api.db import get_db
 from api.models import Job
 from api.utils.security import get_current_user
+from api.job_distribution import auto_distribute_job
 
 router = APIRouter()
 
@@ -75,12 +76,32 @@ def create_job(
     db.commit()
     db.refresh(db_job)
 
+    # 🔥 Build job data for distribution
+    job_data = {
+        "jobid": db_job.jobid,
+        "job_title": db_job.job_title,
+        "location": db_job.location,
+        "job_description": db_job.job_description,
+        "skills": db_job.skills,
+        "employment_type": db_job.employment_type,
+        "salary": db_job.salary,
+        "experience": db_job.experience,
+        "work_authorization": db_job.work_authorization,
+        "visa_transfer": db_job.visa_transfer,
+        "user_email": db_job.posted_by,
+        "user_company": db_job.client_name
+    }
+
+    # 🔥 CALL DISTRIBUTION ENGINE
+    distribution = auto_distribute_job(job_data, db)
+
+    # 🔥 RETURN EVERYTHING
     return {
         "success": True,
         "message": "Job created successfully",
-        "job": db_job.jobid
+        "job": db_job.jobid,
+        "distribution": distribution
     }
-
 
 # =========================================================
 # GET ALL JOBS
