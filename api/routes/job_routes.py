@@ -53,56 +53,78 @@ def create_job(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    job_id = str(uuid.uuid4())[:8].upper()
+    try:
+        import uuid
+        from datetime import date, datetime
 
-    db_job = Job(
-        jobid=job_id,
-        created_date=date.today(),
-        job_title=job.job_title,
-        job_description=job.job_description,
-        location=job.location,
-        experience=job.experience,
-        skills=job.skills,
-        employment_type=job.employment_type or "Full-time",
-        salary=job.salary or "Negotiable",
-        created_at=datetime.utcnow(),
-        client_name=job.client_name or "Internal",
-        work_authorization=job.work_authorization or "Any",
-        visa_transfer=job.visa_transfer or "No",
-        posted_by=current_user.get("email", "system")
-    )
+        # 🔥 Generate Job ID
+        job_id = str(uuid.uuid4())[:8].upper()
 
-    db.add(db_job)
-    db.commit()
-    db.refresh(db_job)
+        # 🔥 Save to DB
+        db_job = Job(
+            jobid=job_id,
+            created_date=date.today(),
+            job_title=job.job_title,
+            job_description=job.job_description,
+            location=job.location,
+            experience=job.experience,
+            skills=job.skills,
+            employment_type=job.employment_type or "Full-time",
+            salary=job.salary or "Negotiable",
+            created_at=datetime.utcnow(),
+            client_name=job.client_name or "Internal",
+            work_authorization=job.work_authorization or "Any",
+            visa_transfer=job.visa_transfer or "No",
+            posted_by=current_user.get("email", "system")
+        )
 
-    # 🔥 Build job data for distribution
-    job_data = {
-        "jobid": db_job.jobid,
-        "job_title": db_job.job_title,
-        "location": db_job.location,
-        "job_description": db_job.job_description,
-        "skills": db_job.skills,
-        "employment_type": db_job.employment_type,
-        "salary": db_job.salary,
-        "experience": db_job.experience,
-        "work_authorization": db_job.work_authorization,
-        "visa_transfer": db_job.visa_transfer,
-        "user_email": db_job.posted_by,
-        "user_company": db_job.client_name
-    }
+        db.add(db_job)
+        db.commit()
+        db.refresh(db_job)
 
-    # 🔥 CALL DISTRIBUTION ENGINE
-    distribution = auto_distribute_job(job_data, db)
+        # 🔥 Build job data for distribution
+        job_data = {
+            "jobid": db_job.jobid,
+            "job_title": db_job.job_title,
+            "location": db_job.location,
+            "job_description": db_job.job_description,
+            "skills": db_job.skills,
+            "employment_type": db_job.employment_type,
+            "salary": db_job.salary,
+            "experience": db_job.experience,
+            "work_authorization": db_job.work_authorization,
+            "visa_transfer": db_job.visa_transfer,
+            "user_email": db_job.posted_by,
+            "user_company": db_job.client_name
+        }
 
-    # 🔥 RETURN EVERYTHING
-    return {
-        "success": True,
-        "message": "Job created successfully",
-        "job": db_job.jobid,
-        "distribution": distribution
-    }
+        # 🔥 CALL DISTRIBUTION ENGINE (SAFE)
+        try:
+            distribution = auto_distribute_job(job_data, db)
+        except Exception as dist_err:
+            print("⚠️ Distribution failed:", dist_err)
+            distribution = {
+                "results": [],
+                "error": str(dist_err)
+            }
 
+        # 🔥 FINAL RESPONSE (frontend-safe)
+        return {
+            "success": True,
+            "jobid": db_job.jobid,
+            "distribution": distribution or {"results": []}
+        }
+
+    except Exception as e:
+        import traceback
+        print("❌ ERROR IN /api/jobs")
+        print(traceback.format_exc())
+
+        raise HTTPException(
+            status_code=500,
+            detail="Job creation failed"
+        )
+    
 # =========================================================
 # GET ALL JOBS
 # =========================================================
